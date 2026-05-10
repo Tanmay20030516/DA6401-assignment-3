@@ -518,7 +518,8 @@ class Transformer(nn.Module):
             # self.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
             ckpt = torch.load(checkpoint_path, map_location="cpu")
             self.load_state_dict(ckpt["model_state_dict"])
-        self._init_weights()  # as per the paper (Xavier initialization)
+        else:
+            self._init_weights()  # as per the paper (Xavier initialization)
 
     def _init_weights(self) -> None:
         """Xavier uniform init for all linear and embedding parameters."""
