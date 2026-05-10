@@ -434,8 +434,8 @@ class Transformer(nn.Module):
             "dropout": dropout,
         }
         self.model_state_dict = None
-        # https://drive.google.com/file/d/1wxpIXCOaoNVbD9GC508gjNp1B8nzD4SW/view?usp=sharing
-        self.google_drive_id: str = "1wxpIXCOaoNVbD9GC508gjNp1B8nzD4SW"
+        # https://drive.google.com/file/d/16sYoPH415Wpx0IDGf0_ZJEjRWPRhJ1i5/view?usp=sharing
+        self.google_drive_id: str = "16sYoPH415Wpx0IDGf0_ZJEjRWPRhJ1i5"
         if checkpoint_path is not None:
             gdown.download(id=self.google_drive_id, output=checkpoint_path, quiet=False) # type: ignore
             ckpt = torch.load(checkpoint_path, map_location="cpu")

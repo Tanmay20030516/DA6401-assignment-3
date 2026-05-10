@@ -1,16 +1,14 @@
-# DA6401 Assignment 3 — Implementing a Transformer for Machine Translation
+# DA6401 Assignment 3: Implementing a Transformer for Machine Translation
 **Name:** Tanmay Gawande
 **Roll Number:** DA25M030
 
 ## Links
-- **GitHub Repository:** [Public repository link](https://github.com/MiRL-IITM/da6401_assignment_3)
+- **GitHub Repository:** [Public repository link](https://github.com/Tanmay20030516/DA6401-assignment-3)
 - **W&B Report:** [Public report link](#)
 
 ## Project Structure
 ```
 .
-├── data/
-│   └── bentrevett___multi30k/
 ├── dataset.py
 ├── model.py
 ├── train.py
@@ -29,7 +27,7 @@ Key components implemented without high-level abstractions:
 - Noam learning rate scheduler (linear warmup + inverse square root decay)
 - Label smoothing loss (ε = 0.1)
 - Greedy autoregressive decoding
-- Corpus-level BLEU evaluation via `sacrebleu`
+- Corpus-level BLEU evaluation via `nltk.translate.bleu_score`
 
 ## Hyperparameters
 
@@ -48,7 +46,7 @@ Key components implemented without high-level abstractions:
 
 ## Setup
 ```bash
-pip install torch numpy matplotlib spacy wandb datasets sacrebleu tqdm gdown
+pip install -r requirements.txt
 python -m spacy download de_core_news_sm
 python -m spacy download en_core_web_sm
 ```

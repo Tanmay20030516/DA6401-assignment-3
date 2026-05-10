@@ -9,3 +9,4 @@ wandb/
 *.pth
 *.ipynb
 test.py
+*.pdf
