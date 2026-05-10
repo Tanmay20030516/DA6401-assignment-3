@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from typing import Optional
 
 import wandb
-import sacrebleu
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 import time
 
 from model import Transformer, make_src_mask, make_tgt_mask
@@ -52,7 +52,9 @@ class LabelSmoothingLoss(nn.Module):
         self.pad_idx = pad_idx
         self.smoothing = smoothing
         self.confidence = 1.0 - smoothing  # mass placed on the true class
-        self.fill_val = smoothing / (vocab_size - 2)  # spread evenly over remaining tokens
+        self.fill_val = smoothing / (
+            vocab_size - 2
+        )  # spread evenly over remaining tokens
 
     def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
@@ -66,10 +68,12 @@ class LabelSmoothingLoss(nn.Module):
         # build smoothed target distribution
         smooth_dist = torch.full_like(logits, self.fill_val)
         smooth_dist[:, self.pad_idx] = 0.0  # pad always gets 0
-        smooth_dist.scatter_(1, target.unsqueeze(1), self.confidence)  # true class gets 1-eps
+        smooth_dist.scatter_(
+            1, target.unsqueeze(1), self.confidence
+        )  # true class gets 1-eps
 
         # zero out rows where the gold token is <pad> — those don't contribute to loss
-        pad_mask = (target == self.pad_idx)
+        pad_mask = target == self.pad_idx
         smooth_dist[pad_mask] = 0.0
 
         # KL divergence — equivalent to cross-entropy with soft targets
@@ -140,16 +144,16 @@ def run_epoch(
             loss = loss_fn(logits_flat, targets_flat)
 
             if is_train:
-                optimizer.zero_grad() # type: ignore
+                optimizer.zero_grad()  # type: ignore
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step() # type: ignore
+                optimizer.step()  # type: ignore
                 if scheduler is not None:
                     scheduler.step()
                 wandb.log(
                     {
                         "train/step_loss": loss.item(),
-                        "train/lr": optimizer.param_groups[0]["lr"], # type: ignore
+                        "train/lr": optimizer.param_groups[0]["lr"],  # type: ignore
                     }
                 )
 
@@ -161,7 +165,13 @@ def run_epoch(
     elapsed = time.time() - t0
     avg_loss = total_loss / max(total_tokens, 1)
     phase = "train" if is_train else "val"
-    wandb.log({f"{phase}/epoch_loss": avg_loss, f"{phase}/epoch_time_s": elapsed, "epoch": epoch_num})
+    wandb.log(
+        {
+            f"{phase}/epoch_loss": avg_loss,
+            f"{phase}/epoch_time_s": elapsed,
+            "epoch": epoch_num,
+        }
+    )
 
     return avg_loss, elapsed
 
@@ -243,27 +253,23 @@ def evaluate_bleu(
 ) -> float:
     """
     Evaluate translation quality with corpus-level BLEU score.
-
     Args:
         model           : Trained Transformer (eval mode).
         test_dataloader : DataLoader over the test split (src, tgt) pairs.
         tgt_vocab       : Vocab object with lookup_token(idx) method.
         device          : 'cpu' or 'cuda'.
         max_len         : Max decode length per sentence.
-
     Returns:
         bleu_score : Corpus-level BLEU (float, range 0-100).
     """
     model.eval()
-
-    hypotheses = []  # model output strings
-    references = []  # gold reference strings
+    hypotheses = []
+    list_of_references = []
 
     with torch.no_grad():
         for src, tgt in test_dataloader:
-            # decode sentence by sentence (safe for any batch size)
             for i in range(src.size(0)):
-                src_i = src[i].unsqueeze(0).to(device)  # [1, src_len]
+                src_i = src[i].unsqueeze(0).to(device)
                 src_mask = make_src_mask(src_i, pad_idx=1).to(device)
 
                 ys = greedy_decode(
@@ -276,15 +282,23 @@ def evaluate_bleu(
                     device=device,
                 )
 
-                hypotheses.append(_ids_to_str(ys.squeeze(0).tolist(), tgt_vocab))
-                references.append(_ids_to_str(tgt[i].tolist(), tgt_vocab))
+                hyp_str = _ids_to_str(ys.squeeze(0).tolist(), tgt_vocab)
+                ref_str = _ids_to_str(tgt[i].tolist(), tgt_vocab)
 
-    # sacrebleu expects references as list-of-lists
-    result = sacrebleu.corpus_bleu(hypotheses, [references])
-    return result.score  # float in range 0-100
+                hypotheses.append(hyp_str.split())
+                list_of_references.append([ref_str.split()])
+
+    smoothing_function = SmoothingFunction().method1
+    bleu_score = corpus_bleu(
+        list_of_references,
+        hypotheses,
+        smoothing_function=smoothing_function,
+        weights=(0.25, 0.25, 0.25, 0.25),
+    )
+    return bleu_score * 100
 
 
-# ❺  CHECKPOINT UTILITIES  (autograder loads your model from disk)
+# CHECKPOINT UTILITIES  (autograder loads your model from disk)
 def save_checkpoint(
     model: Transformer,
     optimizer: torch.optim.Optimizer,
@@ -406,7 +420,7 @@ def run_training_experiment() -> None:
     src_vocab = m30k.src_vocab
     tgt_vocab = m30k.tgt_vocab
     wandb.config.update(
-        {"src_vocab_size": len(src_vocab), "tgt_vocab_size": len(tgt_vocab)} # type: ignore
+        {"src_vocab_size": len(src_vocab), "tgt_vocab_size": len(tgt_vocab)}  # type: ignore
     )
 
     # dataloaders
@@ -418,8 +432,8 @@ def run_training_experiment() -> None:
 
     # model
     model = Transformer(
-        src_vocab_size=len(src_vocab), # type: ignore
-        tgt_vocab_size=len(tgt_vocab), # type: ignore
+        src_vocab_size=len(src_vocab),  # type: ignore
+        tgt_vocab_size=len(tgt_vocab),  # type: ignore
         d_model=cfg.d_model,
         N=cfg.N,
         num_heads=cfg.num_heads,
@@ -445,8 +459,8 @@ def run_training_experiment() -> None:
 
     # label smoothing loss
     loss_fn = LabelSmoothingLoss(
-        vocab_size=len(tgt_vocab), # type: ignore
-        pad_idx=tgt_vocab.pad_idx, # type: ignore
+        vocab_size=len(tgt_vocab),  # type: ignore
+        pad_idx=tgt_vocab.pad_idx,  # type: ignore
         smoothing=cfg.label_smooth,
     )
 
@@ -478,7 +492,9 @@ def run_training_experiment() -> None:
             device=device,
         )
 
-        print(f"  train loss : {train_loss:.4f} (took {train_elapsed:.4f}s)  |  val loss : {val_loss:.4f} (took {val_elapsed:.4f}s)")
+        print(
+            f"  train loss : {train_loss:.4f} (took {train_elapsed:.4f}s)  |  val loss : {val_loss:.4f} (took {val_elapsed:.4f}s)"
+        )
 
         # save latest checkpoint every epoch (useful for resuming)
         save_checkpoint(model, optimizer, scheduler, epoch, path="latest_checkpoint.pt")

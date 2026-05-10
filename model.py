@@ -596,7 +596,7 @@ class Transformer(nn.Module):
         memory = self.encode(src, src_mask)
         return self.decode(memory, src_mask, tgt, tgt_mask)
 
-    def infer(self, src_sentence: str, device="cpu") -> str:
+    def infer(self, src_sentence: str, device="cpu", max_len: int = 100) -> str:
         """
         Translates a German sentence to English using greedy autoregressive decoding.
 
@@ -624,7 +624,7 @@ class Transformer(nn.Module):
                 model=self,
                 src=src,
                 src_mask=src_mask,
-                max_len=100,
+                max_len=max_len,
                 start_symbol=TGT_VOCAB.sos_idx,
                 end_symbol=TGT_VOCAB.eos_idx,
                 device=device,
