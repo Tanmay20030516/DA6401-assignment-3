@@ -336,6 +336,47 @@ def load_checkpoint(
     print(f"[checkpoint] epoch {ckpt['epoch']} loaded <- {path}")
     return ckpt["epoch"]
 
+## experimental (below function was written for local testing purposes ONLY. I have used greedy decoding only in evaluate_bleau func)
+def beam_decode(
+    model: Transformer,
+    src: torch.Tensor,
+    src_mask: torch.Tensor,
+    max_len: int,
+    start_symbol: int,
+    end_symbol: int,
+    device: str = "cpu",
+    beam_size: int = 4,
+) -> torch.Tensor:
+    model.eval()
+    with torch.no_grad():
+        memory = model.encode(src, src_mask)  # [1, src_len, d_model]
+        # each beam: (score, token_ids)
+        beams = [(0.0, [start_symbol])]
+        completed = []
+        for _ in range(max_len - 1):
+            candidates = []
+            for score, seq in beams:
+                if seq[-1] == end_symbol:
+                    completed.append((score, seq))
+                    continue
+                ys = torch.tensor([seq], dtype=torch.long, device=device)
+                tgt_mask = make_tgt_mask(ys, pad_idx=1).to(device)
+                logits = model.decode(memory, src_mask, ys, tgt_mask)
+                log_probs = torch.log_softmax(logits[:, -1, :], dim=-1)  # [1, vocab]
+                topk_scores, topk_ids = log_probs[0].topk(beam_size)
+                for s, idx in zip(topk_scores.tolist(), topk_ids.tolist()):
+                    candidates.append((score + s, seq + [idx]))
+            if not candidates:
+                break
+            # keep top beam_size, length-normalised
+            candidates.sort(key=lambda x: x[0] / len(x[1]), reverse=True)
+            beams = candidates[:beam_size]
+            if all(seq[-1] == end_symbol for _, seq in beams):
+                break
+        completed += beams
+        completed.sort(key=lambda x: x[0] / len(x[1]), reverse=True)
+        best = completed[0][1]
+    return torch.tensor([best], dtype=torch.long, device=device)
 
 #   EXPERIMENT ENTRY POINT
 def run_training_experiment() -> None:
@@ -411,8 +452,7 @@ def run_training_experiment() -> None:
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=1.0,  # Noam scheduler scales this; base lr=1 is intentional
-        betas=(0.9, 0.98),
-        eps=1e-9,
+        betas=(0.9, 0.98), eps=1e-9,
     )
 
     # Noam LR scheduler
