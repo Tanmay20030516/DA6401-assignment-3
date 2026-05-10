@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from train import greedy_decode
+from train import greedy_decode
 from dataset import Multi30kDataset
 
 multi30k = Multi30kDataset()
