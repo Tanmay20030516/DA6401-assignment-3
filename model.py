@@ -503,7 +503,9 @@ class Transformer(nn.Module):
         if checkpoint_path is not None:
             # https://drive.google.com/file/d/1_XcYp0El6KcgQdSKauV_Gh16mOP_zSfs/view?usp=sharing
             gdown.download(id="1_XcYp0El6KcgQdSKauV_Gh16mOP_zSfs", output=checkpoint_path, quiet=False)
-            self.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
+            # self.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
+            ckpt = torch.load(checkpoint_path, map_location="cpu")
+            self.load_state_dict(ckpt["model_state_dict"])
         self._init_weights()  # as per the paper (Xavier initialization)
 
     def _init_weights(self) -> None:
