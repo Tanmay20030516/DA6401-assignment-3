@@ -16,7 +16,6 @@ AUTOGRADER CONTRACT (DO NOT MODIFY SIGNATURES):
 
 import math
 import copy
-import os
 import gdown
 from typing import Optional, Tuple
 
@@ -24,7 +23,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from train import greedy_decode
 from dataset import Multi30kDataset
 
 multi30k = Multi30kDataset()
@@ -516,7 +514,6 @@ class Transformer(nn.Module):
         self.output_proj = nn.Linear(d_model, tgt_vocab_size)
         # init should also load the model weights if checkpoint path provided, download the .pth file like this
         if checkpoint_path is not None:
-            
             gdown.download(id=self.google_drive_id, output=checkpoint_path, quiet=False)
             # self.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
             ckpt = torch.load(checkpoint_path, map_location="cpu")
@@ -638,6 +635,52 @@ class Transformer(nn.Module):
             if TGT_VOCAB.lookup_token(idx) not in SPECIALS
         ]
         return " ".join(tokens_out)
+
+
+def greedy_decode(
+    model: Transformer,
+    src: torch.Tensor,
+    src_mask: torch.Tensor,
+    max_len: int,
+    start_symbol: int,
+    end_symbol: int,
+    device: str = "cpu",
+) -> torch.Tensor:
+    """
+    Generate a translation token-by-token using greedy decoding.
+    Encodes source once, then at each step decodes the full output
+    sequence so far and picks the argmax at the last position only.
+
+    Args:
+        model        : Trained Transformer.
+        src          : Source token indices, shape [1, src_len].
+        src_mask     : shape [1, 1, 1, src_len].
+        max_len      : Maximum number of tokens to generate.
+        start_symbol : Vocabulary index of <sos>.
+        end_symbol   : Vocabulary index of <eos>.
+        device       : 'cpu' or 'cuda'.
+
+    Returns:
+        ys : Generated token indices, shape [1, out_len].
+             Includes start_symbol; stops at (and includes) end_symbol
+             or when max_len is reached.
+    """
+    model.eval()
+    with torch.no_grad():
+        # encode source once — memory is reused for every decoding step
+        memory = model.encode(src, src_mask)  # [1, src_len, d_model]
+        # initialise output with <sos>
+        ys = torch.tensor([[start_symbol]], dtype=torch.long, device=device)  # [1, 1]
+        for _ in range(max_len - 1):
+            tgt_mask = make_tgt_mask(ys, pad_idx=1).to(device)
+            # decode current sequence -> [1, cur_len, vocab_size]
+            logits = model.decode(memory, src_mask, ys, tgt_mask)
+            # argmax over vocab at the last position only
+            next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)  # [1, 1]
+            ys = torch.cat([ys, next_token], dim=1)
+            if next_token.item() == end_symbol:
+                break
+    return ys  # [1, out_len]
 
 
 if __name__ == "__main__":

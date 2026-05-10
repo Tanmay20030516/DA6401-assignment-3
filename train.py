@@ -176,7 +176,7 @@ def run_epoch(
     return avg_loss, elapsed
 
 
-#   GREEDY DECODING
+# GREEDY DECODING
 def greedy_decode(
     model: Transformer,
     src: torch.Tensor,
