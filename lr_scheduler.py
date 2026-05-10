@@ -9,16 +9,16 @@ Formula:
 import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import LRScheduler
+import matplotlib.pyplot as plt
 
 
 class NoamScheduler(LRScheduler):
     """
     Noam learning rate scheduler as described in "Attention Is All You Need".
-
     Applies a warm-up phase where LR increases linearly, followed by
     a decay phase where LR decreases proportional to the inverse square
-    root of the step number.
-    In training use as->
+    root of the step number.  
+    In training use as:
     ```python
     for epoch in range(num_epochs):
          for batch in train_loader:
@@ -44,19 +44,18 @@ class NoamScheduler(LRScheduler):
         self.d_model = d_model
         self.warmup_steps = warmup_steps
         # now init the base class
-        super().__init__(optimizer, last_epoch)
+        super(NoamScheduler, self).__init__(optimizer, last_epoch)
 
     def _get_lr_scale(self) -> float:
         """
-        Compute the Noam scaling factor for the current step.
+        Compute the Noam scaling factor for the current step.  
+        During warmup (step < warmup_steps):  
+        - min will pick step * warmup_steps^(-1.5)  
+        - This grows linearly from 0 -> 1  
 
-        During warmup (step < warmup_steps):
-            - min will pick step * warmup_steps^(-1.5)
-            - This grows linearly from 0 -> 1
-
-        After warmup (step >= warmup_steps):
-            - min will pick step^(-0.5)
-            - This decays as 1/sqrt(step)
+        After warmup (step >= warmup_steps):  
+        - min will pick step^(-0.5)  
+        - This decays as 1/sqrt(step)  
         Returns:
             float: The scalar multiplier applied to the base learning rate.
         """
@@ -118,8 +117,6 @@ def get_lr_history(
 
 # Quick visual check — run:  python3 lr_scheduler.py
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-
     D_MODEL = 512
     WARMUP_STEPS = 4000
     TOTAL_STEPS = 20_000
@@ -128,9 +125,7 @@ if __name__ == "__main__":
 
     plt.figure(figsize=(9, 4))
     plt.plot(lrs)
-    plt.axvline(
-        WARMUP_STEPS, color="red", linestyle="--", label=f"warmup={WARMUP_STEPS}"
-    )
+    plt.axvline(WARMUP_STEPS, color="red", linestyle="--", label=f"warmup={WARMUP_STEPS}")
     plt.xlabel("Step")
     plt.ylabel("Learning Rate")
     plt.title(f"Noam LR Schedule  (d_model={D_MODEL})")

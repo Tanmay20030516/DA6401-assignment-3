@@ -6,5 +6,6 @@ dump/
 data/
 wandb/
 *.pt
+*.pth
 *.ipynb
 test.py

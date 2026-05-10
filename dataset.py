@@ -86,9 +86,7 @@ def _tokenize(nlp, text: str) -> list[str]:
 
 class Multi30kDataset:
     def __init__(self, split="train"):
-        """
-        Loads the Multi30k dataset and prepares tokenizers.
-        """
+        """Loads the Multi30k dataset and prepares tokenizers."""
         self.split = split
         # Load dataset from Hugging Face: https://huggingface.co/datasets/bentrevett/multi30k
 
@@ -146,7 +144,6 @@ class Multi30kDataset:
         """
         Convert English and German sentences into integer token lists using
         spacy and the defined vocabulary.
-
         Result stored in self.processed:
             { "train": [(src_ids, tgt_ids), ...],
               "validation": [...],
@@ -219,7 +216,6 @@ class _TranslationDataset(Dataset):
 def _make_collate_fn(pad_idx: int) -> Callable:
     """
     Returns a collate function that pads variable-length sequences (we provide `<pad>` token index).
-
     Each batch yields:
         src : [batch_size, max_src_len]  - padded source token ids
         tgt : [batch_size, max_tgt_len]  - padded target token ids

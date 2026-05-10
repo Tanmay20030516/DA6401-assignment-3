@@ -5,13 +5,13 @@ DA6401 Assignment 3: "Attention Is All You Need"
 AUTOGRADER CONTRACT (DO NOT MODIFY SIGNATURES):
   ┌─────────────────────────────────────────────────────────────────────┐
   │  greedy_decode(model, src, src_mask, max_len, start_symbol)         │
-  │      -> torch.Tensor  shape [1, out_len]  (token indices)            │
+  │      -> torch.Tensor  shape [1, out_len]  (token indices)           │
   │                                                                     │
   │  evaluate_bleu(model, test_dataloader, tgt_vocab, device)           │
-  │      -> float  (corpus-level BLEU score, 0-100)                      │
+  │      -> float  (corpus-level BLEU score, 0-100)                     │
   │                                                                     │
-  │  save_checkpoint(model, optimizer, scheduler, epoch, path) -> None   │
-  │  load_checkpoint(path, model, optimizer, scheduler)        -> int    │
+  │  save_checkpoint(model, optimizer, scheduler, epoch, path) -> None  │
+  │  load_checkpoint(path, model, optimizer, scheduler)        -> int   │
   └─────────────────────────────────────────────────────────────────────┘
 """
 
@@ -33,53 +33,43 @@ from dataset import Multi30kDataset
 #  LABEL SMOOTHING LOSS
 class LabelSmoothingLoss(nn.Module):
     """
-    Label smoothing as in "Attention Is All You Need".
-
-    Instead of a hard one-hot target, mass is redistributed:
-        true class  ->  1 - eps
-        all others  ->  eps / (vocab_size - 2)   (excluding pad and true class)
-        <pad>       ->  0.0                       (never rewarded)
-
-    Args:
-        vocab_size (int)  : Number of output classes.
-        pad_idx    (int)  : Index of <pad> token — receives 0 probability.
-        smoothing  (float): Smoothing factor epsilon (default 0.1).
+        Label smoothing as in "Attention Is All You Need".  
+        Instead of a hard one-hot target, mass is redistributed:  
+        - true class : 1 - eps
+        - all others : eps / (vocab_size - 2)   (excluding pad and true class)
+        - `<pad>`    : 0.0                      (never rewarded)
+        Args:
+            vocab_size (int)  : Number of output classes.
+            pad_idx    (int)  : Index of <pad> token — receives 0 probability.
+            smoothing  (float): Smoothing factor epsilon (default 0.1).
     """
 
     def __init__(self, vocab_size: int, pad_idx: int, smoothing: float = 0.1) -> None:
-        super().__init__()
+        super(LabelSmoothingLoss, self).__init__()
         self.vocab_size = vocab_size
         self.pad_idx = pad_idx
         self.smoothing = smoothing
         self.confidence = 1.0 - smoothing  # mass placed on the true class
-        self.fill_val = smoothing / (
-            vocab_size - 2
-        )  # spread evenly over remaining tokens
+        self.fill_val = smoothing / (vocab_size - 2)  # spread evenly over remaining tokens
 
     def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Args:
             logits : shape [batch * tgt_len, vocab_size]  (raw model output)
             target : shape [batch * tgt_len]              (gold token indices)
-
         Returns:
             Scalar mean loss, ignoring <pad> positions.
         """
         # build smoothed target distribution
         smooth_dist = torch.full_like(logits, self.fill_val)
         smooth_dist[:, self.pad_idx] = 0.0  # pad always gets 0
-        smooth_dist.scatter_(
-            1, target.unsqueeze(1), self.confidence
-        )  # true class gets 1-eps
-
+        smooth_dist.scatter_(1, target.unsqueeze(1), self.confidence)  # true class gets 1-eps
         # zero out rows where the gold token is <pad> — those don't contribute to loss
         pad_mask = target == self.pad_idx
         smooth_dist[pad_mask] = 0.0
-
         # KL divergence — equivalent to cross-entropy with soft targets
         log_probs = F.log_softmax(logits, dim=-1)
         loss = -(smooth_dist * log_probs).sum(dim=-1)  # [N]
-
         # average over non-pad tokens only
         n_tokens = (~pad_mask).sum().clamp(min=1)
         return loss.sum() / n_tokens
@@ -98,7 +88,6 @@ def run_epoch(
 ) -> tuple[float, float]:
     """
     Run one epoch of training or evaluation.
-
     Args:
         data_iter  : DataLoader yielding (src, tgt) batches of token indices.
         model      : Transformer instance.
@@ -107,8 +96,7 @@ def run_epoch(
         scheduler  : NoamScheduler instance (pass None during eval).
         epoch_num  : Current epoch index (for logging).
         is_train   : If True, perform backward pass and scheduler step.
-        device     : 'cpu' or 'cuda'.
-
+        device     : 'cpu', 'cuda' or 'mps'.
     Returns:
         avg_loss : Average per-token loss over the epoch (float).
     """
@@ -126,24 +114,23 @@ def run_epoch(
             tgt = tgt.to(device)  # [B, tgt_len]
 
             # teacher forcing: feed tgt[:-1] as input, predict tgt[1:] as output
+            # this ensures that past token mistakes do not propagate forward
             tgt_in = tgt[:, :-1]  # <sos> w1 w2 ... wN
             tgt_out = tgt[:, 1:]  #       w1 w2 ... wN <eos>
-
+            
             # build masks
             src_mask = make_src_mask(src, pad_idx=1).to(device)
             tgt_mask = make_tgt_mask(tgt_in, pad_idx=1).to(device)
 
             # forward pass -> [B, tgt_len-1, vocab_size]
             logits = model(src, tgt_in, src_mask, tgt_mask)
-
             # flatten for loss computation
             B, T, V = logits.shape
             logits_flat = logits.reshape(B * T, V)  # [B*T, Vocab size]
             targets_flat = tgt_out.reshape(B * T)  # [B*T]
-
             loss = loss_fn(logits_flat, targets_flat)
 
-            if is_train:
+            if is_train: # weight update
                 optimizer.zero_grad()  # type: ignore
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -156,7 +143,6 @@ def run_epoch(
                         "train/lr": optimizer.param_groups[0]["lr"],  # type: ignore
                     }
                 )
-
             # accumulate: we count only non-pad tokens
             n_tokens = (tgt_out != 1).sum().item()
             total_loss += loss.item() * n_tokens
@@ -187,11 +173,9 @@ def greedy_decode(
     device: str = "cpu",
 ) -> torch.Tensor:
     """
-    Generate a translation token-by-token using greedy decoding.
-
+    Generate a translation token-by-token using greedy decoding.  
     Encodes source once, then at each step decodes the full output
-    sequence so far and picks the argmax at the last position only.
-
+    sequence so far and picks the argmax at the last position only.  
     Args:
         model        : Trained Transformer.
         src          : Source token indices, shape [1, src_len].
@@ -200,7 +184,6 @@ def greedy_decode(
         start_symbol : Vocabulary index of <sos>.
         end_symbol   : Vocabulary index of <eos>.
         device       : 'cpu' or 'cuda'.
-
     Returns:
         ys : Generated token indices, shape [1, out_len].
              Includes start_symbol; stops at (and includes) end_symbol
@@ -208,29 +191,24 @@ def greedy_decode(
     """
     model.eval()
     with torch.no_grad():
-        # encode source once — memory is reused for every decoding step
+        # encode source once, memory is reused for every decoding step
         memory = model.encode(src, src_mask)  # [1, src_len, d_model]
-
         # initialise output with <sos>
         ys = torch.tensor([[start_symbol]], dtype=torch.long, device=device)  # [1, 1]
-
         for _ in range(max_len - 1):
             tgt_mask = make_tgt_mask(ys, pad_idx=1).to(device)
-
             # decode current sequence -> [1, cur_len, vocab_size]
             logits = model.decode(memory, src_mask, ys, tgt_mask)
-
             # argmax over vocab at the last position only
             next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)  # [1, 1]
             ys = torch.cat([ys, next_token], dim=1)
-
             if next_token.item() == end_symbol:
                 break
 
     return ys  # [1, out_len]
 
 
-#   BLEU EVALUATION
+# BLEU EVALUATION
 _SPECIALS = {"<sos>", "<eos>", "<pad>", "<unk>"}
 
 
@@ -288,14 +266,13 @@ def evaluate_bleu(
                 hypotheses.append(hyp_str.split())
                 list_of_references.append([ref_str.split()])
 
-    smoothing_function = SmoothingFunction().method1
+    smoothing_function = SmoothingFunction().method1 # Add epsilon counts to precision with 0 counts
     bleu_score = corpus_bleu(
         list_of_references,
         hypotheses,
         smoothing_function=smoothing_function,
-        weights=(0.25, 0.25, 0.25, 0.25),
     )
-    return bleu_score * 100
+    return bleu_score * 100 # type: ignore
 
 
 # CHECKPOINT UTILITIES  (autograder loads your model from disk)
@@ -307,21 +284,17 @@ def save_checkpoint(
     path: str = "checkpoint.pt",
 ) -> None:
     """
-    Save model + optimizer + scheduler state to disk.
-
+    Save model, optimizer, scheduler state to disk.  
     Args:
-        model     : Transformer instance.
-        optimizer : Optimizer instance.
-        scheduler : NoamScheduler instance.
-        epoch     : Current epoch number.
-        path      : File path to write (default 'checkpoint.pt').
-
+        model     : Transformer instance.  
+        optimizer : Optimizer instance.  
+        scheduler : NoamScheduler instance.  
+        epoch     : Current epoch number.  
+        path      : File path to write (default 'checkpoint.pt').  
     Saves a dict with keys:
         'epoch', 'model_state_dict', 'optimizer_state_dict',
-        'scheduler_state_dict', 'model_config'
-
-    model_config must contain all kwargs needed to reconstruct
-    Transformer(**model_config).
+        'scheduler_state_dict', 'model_config'  
+    model_config must contain all kwargs needed to reconstruct Transformer(**model_config).
     """
     torch.save(
         {
@@ -344,18 +317,15 @@ def load_checkpoint(
 ) -> int:
     """
     Restore model (and optionally optimizer/scheduler) state from disk.
-
     Args:
         path      : Path to checkpoint file saved by save_checkpoint.
         model     : Transformer with matching architecture.
         optimizer : Optimizer to restore (pass None to skip).
         scheduler : Scheduler to restore (pass None to skip).
-
     Returns:
         epoch : The epoch at which the checkpoint was saved (int).
     """
     ckpt = torch.load(path, map_location="cpu")
-
     model.load_state_dict(ckpt["model_state_dict"])
 
     if optimizer is not None:
@@ -371,7 +341,6 @@ def load_checkpoint(
 def run_training_experiment() -> None:
     """
     Set up and run the full training experiment.
-
     Steps:
         1. Init W&B:   wandb.init(project="da6401-a3", config={...})
         2. Build dataset / vocabs from dataset.py
@@ -419,25 +388,19 @@ def run_training_experiment() -> None:
 
     src_vocab = m30k.src_vocab
     tgt_vocab = m30k.tgt_vocab
-    wandb.config.update(
-        {"src_vocab_size": len(src_vocab), "tgt_vocab_size": len(tgt_vocab)}  # type: ignore
-    )
+    wandb.config.update({"src_vocab_size": len(src_vocab), "tgt_vocab_size": len(tgt_vocab)})  # type: ignore
 
     # dataloaders
     train_loader = m30k.get_dataloader("train", batch_size=cfg.batch_size, shuffle=True)
-    val_loader = m30k.get_dataloader(
-        "validation", batch_size=cfg.batch_size, shuffle=False
-    )
+    val_loader = m30k.get_dataloader("validation", batch_size=cfg.batch_size, shuffle=False)
     test_loader = m30k.get_dataloader("test", batch_size=cfg.batch_size, shuffle=False)
 
     # model
     model = Transformer(
         src_vocab_size=len(src_vocab),  # type: ignore
         tgt_vocab_size=len(tgt_vocab),  # type: ignore
-        d_model=cfg.d_model,
-        N=cfg.N,
-        num_heads=cfg.num_heads,
-        d_ff=cfg.d_ff,
+        d_model=cfg.d_model, num_heads=cfg.num_heads,
+        N=cfg.N, d_ff=cfg.d_ff,
         dropout=cfg.dropout,
     ).to(device)
 
@@ -453,16 +416,13 @@ def run_training_experiment() -> None:
     )
 
     # Noam LR scheduler
-    scheduler = NoamScheduler(
-        optimizer, d_model=cfg.d_model, warmup_steps=cfg.warmup_steps
-    )
+    scheduler = NoamScheduler(optimizer, d_model=cfg.d_model, warmup_steps=cfg.warmup_steps)
 
     # label smoothing loss
     loss_fn = LabelSmoothingLoss(
         vocab_size=len(tgt_vocab),  # type: ignore
         pad_idx=tgt_vocab.pad_idx,  # type: ignore
-        smoothing=cfg.label_smooth,
-    )
+        smoothing=cfg.label_smooth,)
 
     # training loop
     best_val_loss = float("inf")
@@ -470,32 +430,22 @@ def run_training_experiment() -> None:
 
     for epoch in range(cfg.num_epochs):
         print(f"\n[epoch {epoch + 1}/{cfg.num_epochs}]")
-
         train_loss, train_elapsed = run_epoch(
-            train_loader,
-            model,
-            loss_fn,
-            optimizer,
-            scheduler,
+            train_loader, model,
+            loss_fn, optimizer, scheduler,
             epoch_num=epoch,
             is_train=True,
             device=device,
         )
         val_loss, val_elapsed = run_epoch(
-            val_loader,
-            model,
-            loss_fn,
-            None,
-            None,
+            val_loader, model,
+            loss_fn, None, None,
             epoch_num=epoch,
             is_train=False,
             device=device,
         )
 
-        print(
-            f"  train loss : {train_loss:.4f} (took {train_elapsed:.4f}s)  |  val loss : {val_loss:.4f} (took {val_elapsed:.4f}s)"
-        )
-
+        print(f"  train loss : {train_loss:.4f} (took {train_elapsed:.4f}s)  |  val loss : {val_loss:.4f} (took {val_elapsed:.4f}s)")
         # save latest checkpoint every epoch (useful for resuming)
         save_checkpoint(model, optimizer, scheduler, epoch, path="latest_checkpoint.pt")
 
@@ -508,7 +458,6 @@ def run_training_experiment() -> None:
     # final BLEU on test set using best checkpoint
     print("\n[eval] loading best checkpoint ...")
     load_checkpoint(best_ckpt_path, model)
-
     bleu = evaluate_bleu(model, test_loader, tgt_vocab, device=device)
     print(f"[eval] test BLEU : {bleu:.2f}")
     wandb.log({"test/bleu": bleu})
