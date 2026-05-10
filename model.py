@@ -486,6 +486,21 @@ class Transformer(nn.Module):
             "d_ff": d_ff,
             "dropout": dropout,
         }
+        # https://drive.google.com/file/d/1_XcYp0El6KcgQdSKauV_Gh16mOP_zSfs/view?usp=sharing
+        self.google_drive_id: str = "1_XcYp0El6KcgQdSKauV_Gh16mOP_zSfs"
+        if checkpoint_path is not None:
+            gdown.download(id=self.google_drive_id, output=checkpoint_path, quiet=False)
+            ckpt = torch.load(checkpoint_path, map_location="cpu")
+            cfg = ckpt["model_config"]
+            # for the cases when we train on config different than that mentioned in the paper
+            # override constructor args with what the checkpoint was actually trained with
+            src_vocab_size = cfg["src_vocab_size"]
+            tgt_vocab_size = cfg["tgt_vocab_size"]
+            d_model = cfg["d_model"]
+            N = cfg["N"]
+            num_heads = cfg["num_heads"]
+            d_ff = cfg["d_ff"]
+            dropout = cfg["dropout"]
         # embeddings
         self.src_embed = nn.Embedding(src_vocab_size, d_model)
         self.tgt_embed = nn.Embedding(tgt_vocab_size, d_model)
@@ -501,8 +516,8 @@ class Transformer(nn.Module):
         self.output_proj = nn.Linear(d_model, tgt_vocab_size)
         # init should also load the model weights if checkpoint path provided, download the .pth file like this
         if checkpoint_path is not None:
-            # https://drive.google.com/file/d/1_XcYp0El6KcgQdSKauV_Gh16mOP_zSfs/view?usp=sharing
-            gdown.download(id="1_XcYp0El6KcgQdSKauV_Gh16mOP_zSfs", output=checkpoint_path, quiet=False)
+            
+            gdown.download(id=self.google_drive_id, output=checkpoint_path, quiet=False)
             # self.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
             ckpt = torch.load(checkpoint_path, map_location="cpu")
             self.load_state_dict(ckpt["model_state_dict"])
