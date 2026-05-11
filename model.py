@@ -40,6 +40,7 @@ def scaled_dot_product_attention(
     K: torch.Tensor,
     V: torch.Tensor,
     mask: Optional[torch.Tensor] = None,
+    dropout: Optional[nn.Module] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute Scaled Dot-Product Attention.
@@ -62,6 +63,8 @@ def scaled_dot_product_attention(
     if mask is not None:
         raw_scores = raw_scores.masked_fill(mask, float("-inf"))
     attention_matrix = F.softmax(raw_scores, dim=-1)
+    if dropout is not None:
+        attention_matrix = dropout(attention_matrix)
     output = torch.matmul(attention_matrix, V)
     return (output, attention_matrix)
 
@@ -172,7 +175,7 @@ class MultiHeadAttention(nn.Module):
         value = value.reshape(batch_size, seq_v, self.num_heads, self.d_k).transpose(1, 2)
 
         # scaled dot product attention
-        value_updated, _ = scaled_dot_product_attention(query, key, value, mask)  # (batch, num_heads, seq_q, d_k)
+        value_updated, _ = scaled_dot_product_attention(query, key, value, mask, self.dropout)  # (batch, num_heads, seq_q, d_k)
 
         # (batch, num_heads, seq, d_k) -> (batch, seq, num_heads, d_k) -> (batch, seq_q, num_heads*d_k) -> (batch, seq_q, d_model)
         value_updated = value_updated.transpose(1, 2)
@@ -434,8 +437,8 @@ class Transformer(nn.Module):
             "dropout": dropout,
         }
         self.model_state_dict = None
-        # https://drive.google.com/file/d/19wfxvVf6HjH75_FRZ8KqH19OcUMj5tW9/view?usp=sharing
-        self.google_drive_id: str = "19wfxvVf6HjH75_FRZ8KqH19OcUMj5tW9" 
+        # https://drive.google.com/file/d/1RrTq8yyZTU3_aQYel1lLdkPBFTZx1u3g/view?usp=sharing
+        self.google_drive_id: str = "1RrTq8yyZTU3_aQYel1lLdkPBFTZx1u3g" 
         if checkpoint_path is not None:
             gdown.download(id=self.google_drive_id, output=checkpoint_path, quiet=False) # type: ignore
             ckpt = torch.load(checkpoint_path, map_location="cpu")
