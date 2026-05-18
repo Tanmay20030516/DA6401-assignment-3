@@ -76,7 +76,7 @@ m30k.build_vocab()
 m30k.process_data()
 test_loader = m30k.get_dataloader('test', batch_size=128)
 
-model = Transformer(checkpoint_path="best_checkpoint.pth")
+model = Transformer(checkpoint_path='best_checkpoint.pth')
 model.eval()
 
 bleu = evaluate_bleu(model, test_loader, m30k.tgt_vocab)
