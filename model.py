@@ -40,7 +40,7 @@ def scaled_dot_product_attention(
     K: torch.Tensor,
     V: torch.Tensor,
     mask: Optional[torch.Tensor] = None,
-    dropout: Optional[nn.Module] = None,
+    dropout: Optional[torch.nn.Module] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute Scaled Dot-Product Attention.
@@ -113,7 +113,7 @@ def make_tgt_mask(tgt: torch.Tensor, pad_idx: int = 1) -> torch.Tensor:
 
 
 #  MULTI-HEAD ATTENTION
-class MultiHeadAttention(nn.Module):
+class MultiHeadAttention(torch.nn.Module):
     """
     Multi-Head Attention as in "Attention Is All You Need", §3.2.2.
         MultiHead(Q,K,V) = Concat(head_1,...,head_h) · W_O
@@ -188,7 +188,7 @@ class MultiHeadAttention(nn.Module):
 
 
 #   POSITIONAL ENCODING
-class PositionalEncoding(nn.Module):
+class PositionalEncoding(torch.nn.Module):
     """
     Sinusoidal Positional Encoding as in "Attention Is All You Need", §3.5.
     Args:
@@ -231,7 +231,7 @@ class PositionalEncoding(nn.Module):
 
 
 #  FEED-FORWARD NETWORK
-class PositionwiseFeedForward(nn.Module):
+class PositionwiseFeedForward(torch.nn.Module):
     """
     Position-wise Feed-Forward Network, §3.3:
         FFN(x) = max(0, x·W₁ + b₁)·W₂ + b₂
@@ -258,7 +258,7 @@ class PositionwiseFeedForward(nn.Module):
 
 
 #  ENCODER LAYER
-class EncoderLayer(nn.Module):
+class EncoderLayer(torch.nn.Module):
     """
     Single Transformer encoder sub-layer:
         x -> [Self-Attention -> Add & Norm] -> [FFN -> Add & Norm]
@@ -297,7 +297,7 @@ class EncoderLayer(nn.Module):
 
 
 #   DECODER LAYER
-class DecoderLayer(nn.Module):
+class DecoderLayer(torch.nn.Module):
     """
     Single Transformer decoder sub-layer:
         x -> [Masked Self-Attn -> Add & Norm]
@@ -349,13 +349,13 @@ class DecoderLayer(nn.Module):
 
 
 #  ENCODER & DECODER STACKS
-class Encoder(nn.Module):
+class Encoder(torch.nn.Module):
     """Stack of N identical EncoderLayer modules with final LayerNorm."""
 
     def __init__(self, layer: EncoderLayer, N: int) -> None:
         super().__init__()
         # deep-copy so each layer has independent weights
-        self.layers = nn.ModuleList([copy.deepcopy(layer) for _ in range(N)])
+        self.layers = torch.nn.ModuleList([copy.deepcopy(layer) for _ in range(N)])
         self.norm = nn.LayerNorm(layer.self_attn.d_model)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -371,12 +371,12 @@ class Encoder(nn.Module):
         return self.norm(x)
 
 
-class Decoder(nn.Module):
+class Decoder(torch.nn.Module):
     """Stack of N identical DecoderLayer modules with final LayerNorm."""
 
     def __init__(self, layer: DecoderLayer, N: int) -> None:
         super().__init__()
-        self.layers = nn.ModuleList([copy.deepcopy(layer) for _ in range(N)])
+        self.layers = torch.nn.ModuleList([copy.deepcopy(layer) for _ in range(N)])
         self.norm = nn.LayerNorm(layer.self_attn.d_model)
 
     def forward(
@@ -401,7 +401,7 @@ class Decoder(nn.Module):
 
 
 #   FULL TRANSFORMER
-class Transformer(nn.Module):
+class Transformer(torch.nn.Module):
     """
     Full Encoder-Decoder Transformer for sequence-to-sequence tasks.
     Args:
@@ -581,12 +581,9 @@ class Transformer(nn.Module):
 
 
 def greedy_decode(
-    model: Transformer,
-    src: torch.Tensor,
-    src_mask: torch.Tensor,
-    max_len: int,
-    start_symbol: int,
-    end_symbol: int,
+    model: Transformer, src: torch.Tensor,
+    src_mask: torch.Tensor, max_len: int,
+    start_symbol: int, end_symbol: int,
     device: str = "cpu",
 ) -> torch.Tensor:
     """

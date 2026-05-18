@@ -15,8 +15,8 @@ AUTOGRADER CONTRACT (DO NOT MODIFY SIGNATURES):
   └─────────────────────────────────────────────────────────────────────┘
 """
 
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from typing import Optional
@@ -31,7 +31,7 @@ from dataset import Multi30kDataset
 
 
 #  LABEL SMOOTHING LOSS
-class LabelSmoothingLoss(nn.Module):
+class LabelSmoothingLoss(torch.nn.Module):
     """
         Label smoothing as in "Attention Is All You Need".  
         Instead of a hard one-hot target, mass is redistributed:  
@@ -79,7 +79,7 @@ class LabelSmoothingLoss(nn.Module):
 def run_epoch(
     data_iter,
     model: Transformer,
-    loss_fn: nn.Module,
+    loss_fn: torch.nn.Module,
     optimizer: Optional[torch.optim.Optimizer],
     scheduler=None,
     epoch_num: int = 0,
@@ -91,7 +91,7 @@ def run_epoch(
     Args:
         data_iter  : DataLoader yielding (src, tgt) batches of token indices.
         model      : Transformer instance.
-        loss_fn    : LabelSmoothingLoss (or any nn.Module loss).
+        loss_fn    : LabelSmoothingLoss (or any torch.nn.Module loss).
         optimizer  : Optimizer (pass None during eval).
         scheduler  : NoamScheduler instance (pass None during eval).
         epoch_num  : Current epoch index (for logging).
@@ -133,7 +133,7 @@ def run_epoch(
             if is_train: # weight update
                 optimizer.zero_grad()  # type: ignore
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()  # type: ignore
                 if scheduler is not None:
                     scheduler.step()
